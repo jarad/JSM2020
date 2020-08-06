@@ -334,7 +334,7 @@ p(\theta| \Sigma_\epsilon, \Sigma_\delta, Y).
 \begin{frame}
 \frametitle{Summary}
 
-Built a multivariate DLM to model Chicago crime data to investigate a hypothesis
+Built a multivariate DLM for Chicago crime data to investigate a hypothesis
 that burglaries were being mis-classified as criminal trespasses, but did not
 find much evidence for this hypothesis.
 
@@ -343,7 +343,8 @@ find much evidence for this hypothesis.
 These slides are available at
 \begin{itemize}
 \item \url{https://github.com/jarad/JSM2020}
-\item \url{http://www.jarad.me/research/presentations.html}
+\item \url{https://www.jarad.me/research/presentations.html}
+\item \url{https://doi.org/10.1371/journal.pone.0218375}
 \item \url{https://github.com/nategarton13/CrimeDLM.RPackage}
 % \item \url{https://github.com/nategarton13/CrimeDLM} (currently private)
 
