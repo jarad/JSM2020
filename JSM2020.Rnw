@@ -1,0 +1,378 @@
+\documentclass[handout,10pt,aspectratio=169]{beamer}
+
+\usepackage{natbib}
+
+\usepackage{pdfpages}
+\usepackage[ruled,vlined,linesnumbered,resetcount]{algorithm2e}
+
+\usetheme{AnnArbor}
+\usecolortheme{beaver}
+
+\graphicspath{{include/}}
+
+\setlength{\unitlength}{\textwidth}  % measure in textwidths
+\usepackage[normalem]{ulem}
+
+% to avoid counting all pages
+\newcommand{\backupbegin}{
+   \newcounter{finalframe}
+   \setcounter{finalframe}{\value{framenumber}}
+}
+\newcommand{\backupend}{
+   \setcounter{framenumber}{\value{finalframe}}
+}
+
+
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{enumerate items}[default]
+\setbeamertemplate{enumerate subitem}{\alph{enumii}.}
+\setbeamertemplate{enumerate subsubitem}{\roman{enumiii}.}
+\setkeys{Gin}{width=0.55\textwidth}
+
+\newcommand{\I}{\mathrm{I}}
+\newcommand{\ind}{\stackrel{ind}{\sim}}
+\providecommand{\ov}[1]{\overline{#1}}
+\newcommand{\ubar}[1]{\text{\b{$#1$}}}
+
+\usefonttheme[onlymath]{serif} % uncomment for article style math
+
+\institute[ISU]{Iowa State University}
+\date{\today}
+
+\title[DLMs for Crime]{Multivariate Temporal Modeling of Crime\\with Dynamic Linear Models}
+\author{Jarad Niemi and Nate Garton}
+
+
+
+<<options, results='hide', echo=FALSE, purl=FALSE>>=
+opts_chunk$set(comment=NA, 
+               fig.width=6, fig.height=5, 
+               size='tiny', 
+               out.width='0.8\\textwidth', 
+               fig.align='center', 
+               message = FALSE,
+               echo = FALSE,
+               cache = TRUE)
+options(width=120)
+@
+
+<<libraries, message=FALSE, warning=FALSE>>=
+library("tidyverse")
+@
+
+<<set_seed, echo=FALSE>>=
+set.seed(20200109)
+@
+
+
+
+\begin{document}
+
+\begin{frame}
+\maketitle
+
+
+\vspace{0.2in} \pause
+
+{\footnotesize
+Funded, in part, by the Center for Statistics and Applications in
+Forensic Evidence (CSAFE): \url{https://forensicstats.org/}
+}
+
+\end{frame}
+
+
+
+
+\begin{frame}
+\frametitle{Outline}
+
+\begin{itemize}
+\item Background
+  \begin{itemize}
+  \item Hypothesis: burglaries $\to$ criminal trespass
+  \end{itemize}
+\item Chicago Crime Data
+\item Multivariate DLM
+  \begin{itemize}
+  \item Linear trend
+  \item Fourier form seasonal model
+  \end{itemize}
+\item Bayesian Estimation in Stan
+\item Results
+  \begin{itemize}
+  \item Standard crime trend analysis
+  \item Posterior (partial) correlations
+  \end{itemize}
+\item Discussion
+\end{itemize}
+
+\end{frame}
+
+
+
+\section{Background}
+\begin{frame}
+\frametitle{Background}
+
+\url{https://www.chicagomag.com/Chicago-Magazine/May-2014/Chicago-crime-rates/}:
+\pause
+\begin{itemize}
+\item Anecdotal evidence of misreporting \pause
+\item Pressure to down-grade crimes \pause
+\item Selective reporting \pause
+\end{itemize}
+
+
+\vspace{0.1in} \pause
+
+\url{https://www.economist.com/democracy-in-america/2014/05/22/deceptive-numbers}:
+
+specific hypothesis:
+\begin{quote}
+burglaries (tracked in UCR) are being misclassified as criminal trespasses 
+(non-UCR)
+\end{quote}
+
+\vspace{0.1in} \pause
+
+FBI's Uniform Crime Reporting (UCR) program: \pause
+\begin{quote}
+[crime] data received from more than 18,000 city, university and college, 
+county, state, tribal, and federal law enforcement agencies voluntarily 
+participating in the program.
+\end{quote}
+
+
+\end{frame}
+
+
+\section{Data}
+\begin{frame}
+\frametitle{Chicago crime data}
+\begin{center}
+\includegraphics{raw_timeseries_grouped}
+\end{center}
+\end{frame}
+
+
+% \subsection{Exploratory}
+% \begin{frame}
+% \frametitle{Raw correlations}
+% \begin{table}[ht]
+% % \begin{threeparttable}
+% \centering
+% \caption{Correlations of monthly crime counts from January 2007 to December 2016 in Chicago between burglaries, robberies, assaults, narcotics, motor vehicle thefts, and criminal trespasses.} \label{t:raw_data_cor}
+% \begin{tabular}{|l|r|r|r|r|r|r|}
+% \hline
+%  & Robbery & Assault & Narcotics & MVT & Trespass\\
+% \hline
+% Burglary & 0.90 & 0.68 & 0.64 & 0.88 & 0.71\\
+% 
+% Robbery & - & 0.68 & 0.38 & 0.76 & 0.63\\
+% 
+% Assault & - & - & 0.51 & 0.61 & 0.79\\
+% 
+% Narcotics & - & - & - & 0.62 & 0.80\\
+% 
+% MVT & - & - & - & - & 0.68\\
+% 
+% % Trespass & - & 0.63 & 0.79 & 0.80 & 0.68 & -\\
+% \hline
+% 
+% \end{tabular}
+% % \end{threeparttable}
+% \end{table}
+% \end{frame}
+
+
+\section{Model}
+\begin{frame}
+\frametitle{Multivariate dynamic linear model}
+
+Let $Y_t = (Y_{1,t},\ldots, Y_{C,t})$ where $Y_{c,t}$ is the log count for 
+crime type $c$ in month $t$. 
+
+\vspace{0.1in} \pause
+
+Multivariate dynamic linear model:
+\[ \begin{array}{lrll}
+\text{observation:} & Y_t      &= F_t \theta_t + \epsilon_t, & \epsilon_t \stackrel{ind}{\sim} N_6\left(0,\Sigma_{\epsilon} \right) \\
+\text{evolution:} & \theta_t &= G_t \theta_{t-1} + \delta_t,   & \delta_t   \stackrel{ind}{\sim} N_*\left(0,\Sigma_{\delta} \right).
+\end{array} \]
+
+\vspace{0.1in} \pause
+where
+\[ \begin{array}{llcl}
+F_t &=F &=& I_{6 \times 6} \otimes (1,0, 1, 0, ..., 1, 0)_{(2 + 2q) \times 1}  \pause \\
+G_t &=G &=& I_{6 \times 6} \otimes \text{blockdiag}(G_0, G_1, ..., G_q)_{(2 + 2q) \times (2 + 2q)}.
+\end{array} \]
+
+\pause
+The evolution is decomposed into a 
+\[ \text{Linear trend: }G_0 = \begin{bmatrix} 1 & 1 \\ 0 & 1  \end{bmatrix} \]
+and \pause
+\[ \text{Seasonality: }G_j =  \begin{bmatrix} \phantom{-}\cos(\omega_j) & \sin(\omega_j) \\ -\sin(\omega_j) & \cos(\omega_j)  \end{bmatrix}, 
+\qquad \qquad \pause 
+\omega_j = 2\pi j / s
+\]
+where $s = 12$ (due to 12 months) and $q = 4$ is the number of harmonics. 
+\end{frame}
+
+
+
+\section{Estimation}
+\begin{frame}
+\frametitle{Bayesian Estimation in Stan}
+\small
+
+Decompose covariance matrices: 
+$\Sigma = \text{diag}(\sigma_1,\ldots,\sigma_6) \Omega \text{diag}(\sigma_1,\ldots,\sigma_6).$
+
+\vspace{0.1in} \pause
+
+Priors (mutually independent): 
+\begin{itemize}\small
+\item $\sigma_j \sim Ca^+(0,1)$ \pause
+\item $p(\Omega) \propto 1$ \pause implies slight peak at 0 correlation \pause
+\item $\theta_0 \sim N_{6(2+2q)}(0,10^7 \mathrm{I})$
+\end{itemize}
+
+\vspace{0.1in} \pause
+
+Full posterior:
+{\footnotesize
+\[ 
+p(\theta, \Sigma_\epsilon, \Sigma_\delta|Y) \propto 
+\left[ \prod_{t = 1}^{T}{N(Y_{t};F\theta_t, \Sigma_\epsilon)N(\theta_t; G\theta_{t-1}, \Sigma_\delta)} \right] 
+\left[ \prod_j Ca^+(\sigma_j;0,1) \right]
+N(\theta_0; 0, 10^{7}I)
+\]
+}
+
+\vspace{0.1in} \pause
+
+Stan (\texttt{rstan}): No-U-turn HMC sampler targets:
+\[
+p(\Sigma_\epsilon,\Sigma_\delta|Y) = \int p(\theta, \Sigma_\epsilon,\Sigma_\delta|Y) d\theta
+\]
+\pause
+Use forward-filtering, backward-sampling (FFBS) algorithm (\texttt{dlm}) to sample
+\[
+p(\theta| \Sigma_\epsilon, \Sigma_\delta, Y).
+\]
+\end{frame}
+
+
+
+
+\section{Results}
+\subsection{Crime trends}
+\begin{frame}
+\frametitle{Standard crime trend analysis}
+\begin{center}
+\includegraphics{trend_plot}
+\end{center}
+\end{frame}
+
+
+
+% \begin{frame}
+% \frametitle{Posterior standard deviations}
+% \setkeys{Gin}{width=0.5\textwidth}
+% \includegraphics{error_sd_dplot} \pause
+% \includegraphics{evo_sd_dplot}
+% \end{frame}
+
+
+
+\subsection{Evolution correlation correlation}
+\begin{frame}
+\frametitle{Evolution correlation}
+\setkeys{Gin}{width=0.45\textwidth}
+\begin{center}
+\includegraphics{evo_cor_density_plot}
+\end{center}
+\end{frame}
+
+
+\subsection{Evolution partial correlation}
+\begin{frame}
+\frametitle{Evolution partial correlation}
+\setkeys{Gin}{width=0.45\textwidth}
+\begin{center}
+\includegraphics{partial_evo_cor_dplot}
+\end{center}
+\end{frame}
+
+
+
+\subsection{Error correlation}
+\begin{frame}
+\frametitle{Error correlation}
+\setkeys{Gin}{width=0.45\textwidth}
+\begin{center}
+\includegraphics{error_cor_density_plot}
+\end{center}
+\end{frame}
+
+\subsection{Error partial correlation}
+\begin{frame}
+\frametitle{Error partial correlation}
+\setkeys{Gin}{width=0.45\textwidth}
+\begin{center}
+\includegraphics{partial_error_cor_density_plot}
+\end{center}
+\end{frame}
+
+
+
+
+
+
+
+\begin{frame}
+\frametitle{Summary}
+
+Built a multivariate DLM to model Chicago crime data to investigate a hypothesis
+that burglaries were being mis-classified as criminal trespasses, but did not
+find much evidence for this hypothesis.
+
+\vspace{0.1in} \pause
+
+These slides are available at
+\begin{itemize}
+\item \url{https://github.com/jarad/JSM2020}
+\item \url{http://www.jarad.me/research/presentations.html}
+\item \url{https://github.com/nategarton13/CrimeDLM.RPackage}
+% \item \url{https://github.com/nategarton13/CrimeDLM} (currently private)
+
+\end{itemize}
+
+\vspace{0.1in} \pause
+
+\begin{center}
+{\Large
+Thank you!
+}
+\end{center}
+
+Other links:
+\begin{itemize}
+\item \url{https://www.youtube.com/jaradniemi}
+\item \url{https://twitter.com/jaradniemi}
+\end{itemize}
+\end{frame}
+
+% \appendix
+% \backupbegin
+% 
+% \begin{frame}
+% \frametitle{References}
+% \scriptsize
+% \bibliography{references}
+% \bibliographystyle{plainnat}
+% \end{frame}
+
+\end{document}
+
